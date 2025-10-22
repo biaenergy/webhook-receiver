@@ -60,7 +60,7 @@ func (m *WebhookSignatureMiddleware) VerifySignature() gin.HandlerFunc {
 		}
 
 		// Verificar que el webhook no sea muy antiguo (5 minutos)
-		if time.Since(webhookTime) > 50*time.Hour {
+		if time.Since(webhookTime) > 5*time.Minute {
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"error":   "UNAUTHORIZED",
 				"message": "Webhook timestamp too old",
