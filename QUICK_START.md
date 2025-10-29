@@ -47,16 +47,19 @@ go run examples/client_example.go
 
 ### Prueba manual con curl:
 ```bash
-# 1. Generar firma
+# 1. Definir payload (estructura real de bia-consumptions)
 SECRET_KEY="default-secret-key"
-PAYLOAD='{"event_type":"test","data":{"test":true},"timestamp":"2024-01-15T10:30:00Z"}'
+PAYLOAD='{"webhook_id":12345,"data_type":"consumption","group_by":"hour","send_interval":"daily","period":{"start_date":"2024-01-15","end_date":"2024-01-16"},"data":{"contract_id":1001,"contract_name":"Demo","sic":"123456789","consumption":[{"hour":0,"active_energy":150.5}]},"timestamp":"2024-01-15T10:30:00Z"}'
+
+# 2. Generar firma HMAC-SHA256
 SIGNATURE=$(echo -n "$PAYLOAD" | openssl dgst -sha256 -hmac "$SECRET_KEY" -binary | xxd -p)
 
-# 2. Enviar webhook
+# 3. Enviar webhook
 curl -X POST http://localhost:8080/webhook \
   -H "Content-Type: application/json" \
   -H "X-Webhook-Signature: $SIGNATURE" \
   -H "X-Webhook-Timestamp: 2024-01-15T10:30:00Z" \
+  -H "X-Webhook-ID: 12345" \
   -d "$PAYLOAD"
 ```
 

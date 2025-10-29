@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -17,7 +19,7 @@ func NewWebhookHandler() *WebhookHandler {
 	return &WebhookHandler{}
 }
 
-// ReceiveWebhook maneja la recepción de webhooks
+// ReceiveWebhook maneja la recepción de webhooks (consumo y facturas)
 // @Summary Recibe un webhook
 // @Description Endpoint para recibir webhooks con verificación de firma
 // @Tags webhooks
@@ -27,17 +29,39 @@ func NewWebhookHandler() *WebhookHandler {
 // @Param X-Webhook-Timestamp header string true "Timestamp del webhook"
 // @Param X-Webhook-ID header string false "ID del webhook"
 // @Param X-Idempotency-Key header string false "Clave de idempotencia"
-// @Param payload body dto.WebhookReceivedPayload true "Payload del webhook"
-// @Success 200 {object} dto.WebhookReceivedResponse
+// @Param payload body dto.WebhookPayload true "Payload del webhook"
+// @Success 200 {object} dto.WebhookResponse
 // @Failure 400 {object} map[string]interface{}
 // @Failure 401 {object} map[string]interface{}
 // @Failure 500 {object} map[string]interface{}
 // @Router /webhook [post]
 func (h *WebhookHandler) ReceiveWebhook(c *gin.Context) {
-	var payload dto.WebhookReceivedPayload
+	// Obtener headers para logging
+	headers := dto.WebhookHeaders{
+		Signature: c.GetHeader("X-Webhook-Signature"),
+		WebhookID: c.GetHeader("X-Webhook-ID"),
+		Timestamp: c.GetHeader("X-Webhook-Timestamp"),
+		IDKey:     c.GetHeader("X-Idempotency-Key"),
+	}
 
-	// Parsear el JSON del body
-	if err := c.ShouldBindJSON(&payload); err != nil {
+	// Primero, detectar el tipo de webhook leyendo solo el campo data_type
+	var basePayload struct {
+		DataType string `json:"data_type"`
+	}
+
+	// Leer el body completo
+	bodyBytes, err := c.GetRawData()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success":   false,
+			"message":   "Failed to read request body: " + err.Error(),
+			"timestamp": time.Now(),
+		})
+		return
+	}
+
+	// Parsear para obtener el data_type
+	if err := json.Unmarshal(bodyBytes, &basePayload); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success":   false,
 			"message":   "Invalid JSON payload: " + err.Error(),
@@ -46,26 +70,30 @@ func (h *WebhookHandler) ReceiveWebhook(c *gin.Context) {
 		return
 	}
 
-	// Obtener headers para logging
-	headers := dto.WebhookReceivedHeaders{
-		Signature: c.GetHeader("X-Webhook-Signature"),
-		WebhookID: c.GetHeader("X-Webhook-ID"),
-		Timestamp: c.GetHeader("X-Webhook-Timestamp"),
-		IDKey:     c.GetHeader("X-Idempotency-Key"),
+	// Procesar según el tipo de webhook
+	var processed bool
+	var message string
+
+	switch basePayload.DataType {
+	case "consumption":
+		processed, message = h.processConsumptionWebhookType(bodyBytes, headers)
+	case "bills":
+		processed, message = h.processBillsWebhookType(bodyBytes, headers)
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success":   false,
+			"message":   "Unknown data_type: " + basePayload.DataType,
+			"timestamp": time.Now(),
+		})
+		return
 	}
 
 	// Log de la recepción del webhook
 	c.Header("X-Webhook-Received", "true")
 
-	// Aquí puedes agregar tu lógica de procesamiento del webhook
-	// Por ejemplo: guardar en base de datos, enviar notificaciones, etc.
-
-	// Simular procesamiento
-	processed := h.processWebhook(payload, headers)
-
-	response := dto.WebhookReceivedResponse{
+	response := dto.WebhookResponse{
 		Success:   true,
-		Message:   "Webhook received and processed successfully",
+		Message:   message,
 		Processed: processed,
 		Timestamp: time.Now(),
 	}
@@ -73,61 +101,64 @@ func (h *WebhookHandler) ReceiveWebhook(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
-// processWebhook procesa el webhook recibido
-func (h *WebhookHandler) processWebhook(payload dto.WebhookReceivedPayload, headers dto.WebhookReceivedHeaders) bool {
-	// Log del procesamiento
-	// log.Printf("Processing webhook: WebhookID=%d, DataType=%s", payload.WebhookID, payload.DataType)
+// processConsumptionWebhookType procesa webhooks de tipo CONSUMO
+func (h *WebhookHandler) processConsumptionWebhookType(bodyBytes []byte, headers dto.WebhookHeaders) (bool, string) {
+	var payload dto.WebhookPayload
 
-	// Procesar según el tipo de datos
-	switch payload.DataType {
-	case "consumption":
-		return h.processConsumptionWebhook(payload)
-	case "bills":
-		return h.processBillsWebhook(payload)
-	default:
-		// log.Printf("Unknown data type: %s", payload.DataType)
-		return true
+	// Parsear el payload específico de consumo
+	if err := json.Unmarshal(bodyBytes, &payload); err != nil {
+		return false, "Failed to parse consumption payload: " + err.Error()
 	}
-}
 
-// processConsumptionWebhook procesa webhooks de consumo
-func (h *WebhookHandler) processConsumptionWebhook(payload dto.WebhookReceivedPayload) bool {
-	// Validar que tenga los campos necesarios para consumo
-	if payload.GroupBy == nil || payload.SendInterval == nil || payload.Period == nil {
-		// log.Printf("Missing required fields for consumption webhook")
-		return false
+	// Validar campos requeridos
+	if payload.GroupBy == "" || payload.SendInterval == "" {
+		return false, "Missing required fields for consumption webhook"
 	}
 
 	// Aquí implementarías la lógica específica para datos de consumo
 	// Por ejemplo:
 	// - Guardar datos de consumo en base de datos
 	// - Enviar notificaciones a usuarios
-	// - Procesar métricas de energía
+	// - Procesar métricas de energía según el tipo de agrupación
 
-	// log.Printf("Processing consumption data: %d contracts, period %s to %s, group by %s",
-	//     len(payload.Data), payload.Period.StartDate, payload.Period.EndDate, *payload.GroupBy)
+	// Log del procesamiento (descomentado para producción)
+	// log.Printf("Processing consumption webhook: ID=%d, Contract=%d, GroupBy=%s, Interval=%s",
+	//     payload.WebhookID, payload.Data.ContractID, payload.GroupBy, payload.SendInterval)
 
-	return true
+	message := fmt.Sprintf("Consumption webhook processed successfully for contract %d (%s)",
+		payload.Data.ContractID, payload.Data.ContractName)
+
+	return true, message
 }
 
-// processBillsWebhook procesa webhooks de facturas
-func (h *WebhookHandler) processBillsWebhook(payload dto.WebhookReceivedPayload) bool {
-	// Validar que tenga los campos necesarios para facturas
-	if payload.TriggerType == nil || payload.Bill == nil {
-		// log.Printf("Missing required fields for bills webhook")
-		return false
+// processBillsWebhookType procesa webhooks de tipo FACTURAS
+func (h *WebhookHandler) processBillsWebhookType(bodyBytes []byte, headers dto.WebhookHeaders) (bool, string) {
+	var payload dto.BillWebhookPayload
+
+	// Parsear el payload específico de facturas
+	if err := json.Unmarshal(bodyBytes, &payload); err != nil {
+		return false, "Failed to parse bills payload: " + err.Error()
+	}
+
+	// Validar campos requeridos
+	if payload.TriggerType == "" {
+		return false, "Missing required fields for bills webhook"
 	}
 
 	// Aquí implementarías la lógica específica para eventos de facturas
 	// Por ejemplo:
-	// - Notificar a usuarios sobre nuevas facturas
-	// - Procesar pagos
-	// - Actualizar estados de facturas
+	// - Notificar a usuarios sobre nuevas facturas (trigger_type="available")
+	// - Procesar confirmación de pagos (trigger_type="paid")
+	// - Actualizar estados de facturas en tu sistema
 
-	// log.Printf("Processing bills data: webhook_id=%d, trigger_type=%s, bill_id=%d",
-	//     payload.WebhookID, *payload.TriggerType, payload.Bill.BillID)
+	// Log del procesamiento (descomentado para producción)
+	// log.Printf("Processing bills webhook: ID=%d, TriggerType=%s, BillID=%d",
+	//     payload.WebhookID, payload.TriggerType, payload.Bill.BillID)
 
-	return true
+	message := fmt.Sprintf("Bills webhook processed successfully: %s event for bill %d",
+		payload.TriggerType, payload.Bill.BillID)
+
+	return true, message
 }
 
 // HealthCheck endpoint de salud

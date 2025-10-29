@@ -8,8 +8,24 @@ Un servidor sencillo para recibir webhooks con verificación de firma HMAC.
 - ✅ **Validación de timestamp** para prevenir replay attacks
 - ✅ **Middleware de seguridad** para headers requeridos
 - ✅ **Estructura limpia** siguiendo patrones de Go
+- ✅ **Dos tipos de webhooks**: Consumo y Facturas
+- ✅ **Sincronizado con bia-consumptions** (estructura actualizada)
 - ✅ **Documentación automática** con Swagger
 - ✅ **Health check** endpoint
+
+## ⚠️ IMPORTANTE: Estructura de Datos
+
+Este proyecto está **sincronizado con la estructura real** que envía `bia-consumptions`:
+
+### Webhooks de Consumo (`data_type: "consumption"`)
+- ✅ El campo `data` es **UN SOLO contrato** (no un array)
+- ✅ Campos de energía: `active_energy`, `active_export`, `inductive_penalized`, `reactive_capacitive`
+- ✅ Soporta agrupación por: `hour`, `day`, `month`
+- ✅ Intervalos de envío: `hourly`, `daily`, `monthly`
+
+### Webhooks de Facturas (`data_type: "bills"`)
+- ✅ Dos tipos de trigger: `available` (factura disponible) y `paid` (factura pagada)
+- ✅ Campo `payment` solo presente cuando `trigger_type="paid"`
 
 ## 📁 Estructura del Proyecto
 
@@ -95,18 +111,50 @@ POST /webhook
 - `X-Webhook-ID`: ID del webhook
 - `X-Idempotency-Key`: Clave de idempotencia
 
-**Payload de ejemplo:**
+**Payload de ejemplo para CONSUMO:**
 ```json
 {
-  "event_type": "consumption.updated",
-  "data": {
-    "meter_id": "12345",
-    "consumption": 150.5,
-    "period": "2024-01-15"
+  "webhook_id": 12345,
+  "data_type": "consumption",
+  "group_by": "hour",
+  "send_interval": "daily",
+  "period": {
+    "start_date": "2024-01-15",
+    "end_date": "2024-01-16"
   },
-  "timestamp": "2024-01-15T10:30:00Z",
-  "source": "bia-consumptions",
-  "version": "1.0"
+  "data": {
+    "contract_id": 1001,
+    "contract_name": "Contrato Demo",
+    "sic": "123456789",
+    "consumption": [
+      {
+        "hour": 0,
+        "active_energy": 150.5,
+        "active_export": 0.0,
+        "inductive_penalized": 10.2,
+        "reactive_capacitive": 5.1
+      }
+    ]
+  },
+  "timestamp": "2024-01-15T10:30:00Z"
+}
+```
+
+**Payload de ejemplo para FACTURAS:**
+```json
+{
+  "webhook_id": 67890,
+  "data_type": "bills",
+  "trigger_type": "available",
+  "bill": {
+    "bill_id": 1001,
+    "contract_id": 2001,
+    "period": "2024-01",
+    "total": 1250.75,
+    "status": "pending",
+    "xml_url": "https://example.com/bill_1001.xml"
+  },
+  "timestamp": "2024-01-15T10:30:00Z"
 }
 ```
 
@@ -157,12 +205,30 @@ func generateSignature(secretKey string, payload []byte) string {
 ### Ejemplo de curl para testing:
 
 ```bash
-# 1. Generar firma (reemplaza con tu secret key)
-SECRET_KEY="tu-clave-secreta"
-PAYLOAD='{"event_type":"test","data":{"test":true},"timestamp":"2024-01-15T10:30:00Z"}'
+# 1. Definir payload de consumo
+SECRET_KEY="default-secret-key"
+PAYLOAD='{
+  "webhook_id": 12345,
+  "data_type": "consumption",
+  "group_by": "hour",
+  "send_interval": "daily",
+  "period": {
+    "start_date": "2024-01-15",
+    "end_date": "2024-01-16"
+  },
+  "data": {
+    "contract_id": 1001,
+    "contract_name": "Contrato Demo",
+    "sic": "123456789",
+    "consumption": [{"hour": 0, "active_energy": 150.5}]
+  },
+  "timestamp": "2024-01-15T10:30:00Z"
+}'
+
+# 2. Generar firma HMAC-SHA256
 SIGNATURE=$(echo -n "$PAYLOAD" | openssl dgst -sha256 -hmac "$SECRET_KEY" -binary | xxd -p)
 
-# 2. Enviar webhook
+# 3. Enviar webhook
 curl -X POST http://localhost:8080/webhook \
   -H "Content-Type: application/json" \
   -H "X-Webhook-Signature: $SIGNATURE" \

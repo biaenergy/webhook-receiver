@@ -12,13 +12,13 @@ import (
 	"time"
 )
 
-// BillsWebhookPayload representa el payload para facturas
+// BillsWebhookPayload representa el payload para facturas (compatible con bia-consumptions)
 type BillsWebhookPayload struct {
 	WebhookID   int                 `json:"webhook_id"`
-	DataType    string              `json:"data_type"`
-	TriggerType string              `json:"trigger_type"`
+	DataType    string              `json:"data_type"`    // "bills"
+	TriggerType string              `json:"trigger_type"` // "available" o "paid"
 	Bill        BillWebhookData     `json:"bill"`
-	Payment     *PaymentWebhookData `json:"payment,omitempty"`
+	Payment     *PaymentWebhookData `json:"payment,omitempty"` // Solo para trigger "paid"
 	Timestamp   time.Time           `json:"timestamp"`
 }
 

@@ -2,22 +2,16 @@ package dto
 
 import "time"
 
-// WebhookReceivedPayload representa el payload recibido en un webhook (dinámico para consumo y facturas)
-type WebhookReceivedPayload struct {
-	WebhookID int       `json:"webhook_id" binding:"required"`
-	DataType  string    `json:"data_type" binding:"required"`
-	Timestamp time.Time `json:"timestamp" binding:"required"`
-
-	// Campos específicos para consumo (opcionales)
-	GroupBy      *string               `json:"group_by,omitempty"`
-	SendInterval *string               `json:"send_interval,omitempty"`
-	Period       *WebhookPeriod        `json:"period,omitempty"`
-	Data         []WebhookContractData `json:"data,omitempty"`
-
-	// Campos específicos para facturas (opcionales)
-	TriggerType *string             `json:"trigger_type,omitempty"`
-	Bill        *BillWebhookData    `json:"bill,omitempty"`
-	Payment     *PaymentWebhookData `json:"payment,omitempty"`
+// WebhookPayload representa el payload de webhooks de CONSUMO
+// Este es el formato real que envía bia-consumptions
+type WebhookPayload struct {
+	WebhookID    int                 `json:"webhook_id" binding:"required"`
+	DataType     string              `json:"data_type" binding:"required"`
+	GroupBy      string              `json:"group_by" binding:"required"`
+	SendInterval string              `json:"send_interval" binding:"required"`
+	Period       WebhookPeriod       `json:"period" binding:"required"`
+	Data         WebhookContractData `json:"data" binding:"required"` // ⚠️ UN SOLO contrato, no array
+	Timestamp    time.Time           `json:"timestamp" binding:"required"`
 }
 
 // WebhookPeriod representa el período de tiempo de los datos
@@ -66,14 +60,15 @@ type WebhookDateAndHourlyConsumptionSummary struct {
 	Hours []WebhookHourlyConsumptionSummary `json:"hours"` // Array de 24 horas (0-23)
 }
 
-// BillWebhookPayload representa el payload para eventos de facturas
+// BillWebhookPayload representa el payload para eventos de FACTURAS
+// Este es el formato real que envía bia-consumptions para webhooks de facturas
 type BillWebhookPayload struct {
-	WebhookID   int                 `json:"webhook_id"`
-	DataType    string              `json:"data_type"`    // "bills"
-	TriggerType string              `json:"trigger_type"` // "available" o "paid"
-	Bill        BillWebhookData     `json:"bill"`
+	WebhookID   int                 `json:"webhook_id" binding:"required"`
+	DataType    string              `json:"data_type" binding:"required"`    // "bills"
+	TriggerType string              `json:"trigger_type" binding:"required"` // "available" o "paid"
+	Bill        BillWebhookData     `json:"bill" binding:"required"`
 	Payment     *PaymentWebhookData `json:"payment,omitempty"` // Solo para trigger "paid"
-	Timestamp   time.Time           `json:"timestamp"`
+	Timestamp   time.Time           `json:"timestamp" binding:"required"`
 }
 
 // BillWebhookData contiene los datos de la factura
@@ -93,16 +88,16 @@ type PaymentWebhookData struct {
 	PaymentMethod string    `json:"payment_method,omitempty"`
 }
 
-// WebhookReceivedResponse representa la respuesta del webhook receiver
-type WebhookReceivedResponse struct {
+// WebhookResponse representa la respuesta del webhook receiver
+type WebhookResponse struct {
 	Success   bool      `json:"success"`
 	Message   string    `json:"message,omitempty"`
 	Processed bool      `json:"processed"`
 	Timestamp time.Time `json:"timestamp"`
 }
 
-// WebhookReceivedHeaders representa los headers importantes del webhook
-type WebhookReceivedHeaders struct {
+// WebhookHeaders representa los headers importantes del webhook
+type WebhookHeaders struct {
 	Signature string `json:"signature"`
 	WebhookID string `json:"webhook_id"`
 	Timestamp string `json:"timestamp"`

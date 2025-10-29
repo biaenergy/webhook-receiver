@@ -13,14 +13,15 @@ import (
 )
 
 // WebhookPayload representa el payload que se enviará (compatible con bia-consumptions)
+// ⚠️ IMPORTANTE: Data es UN SOLO contrato, no un array
 type WebhookPayload struct {
-	WebhookID    int                   `json:"webhook_id"`
-	DataType     string                `json:"data_type"`
-	GroupBy      string                `json:"group_by"`
-	SendInterval string                `json:"send_interval"`
-	Period       WebhookPeriod         `json:"period"`
-	Data         []WebhookContractData `json:"data"`
-	Timestamp    time.Time             `json:"timestamp"`
+	WebhookID    int                 `json:"webhook_id"`
+	DataType     string              `json:"data_type"`
+	GroupBy      string              `json:"group_by"`
+	SendInterval string              `json:"send_interval"`
+	Period       WebhookPeriod       `json:"period"`
+	Data         WebhookContractData `json:"data"` // ⚠️ UN SOLO contrato
+	Timestamp    time.Time           `json:"timestamp"`
 }
 
 // WebhookPeriod representa el período de tiempo
@@ -51,6 +52,7 @@ func main() {
 	webhookURL := "http://localhost:8080/webhook"
 
 	// Crear payload (compatible con bia-consumptions)
+	// ⚠️ IMPORTANTE: Cada webhook envía datos de UN SOLO contrato
 	payload := WebhookPayload{
 		WebhookID:    12345,
 		DataType:     "consumption",
@@ -60,26 +62,24 @@ func main() {
 			StartDate: "2024-01-15",
 			EndDate:   "2024-01-16",
 		},
-		Data: []WebhookContractData{
-			{
-				ContractID:   1001,
-				ContractName: "Contrato Demo",
-				SIC:          "123456789",
-				Consumption: []map[string]interface{}{
-					{
-						"hour":                0,
-						"active_energy":       150.5,
-						"active_export":       0.0,
-						"inductive_penalized": 10.2,
-						"reactive_capacitive": 5.1,
-					},
-					{
-						"hour":                1,
-						"active_energy":       145.3,
-						"active_export":       0.0,
-						"inductive_penalized": 9.8,
-						"reactive_capacitive": 4.9,
-					},
+		Data: WebhookContractData{
+			ContractID:   1001,
+			ContractName: "Contrato Demo",
+			SIC:          "123456789",
+			Consumption: []map[string]interface{}{
+				{
+					"hour":                0,
+					"active_energy":       150.5,
+					"active_export":       0.0,
+					"inductive_penalized": 10.2,
+					"reactive_capacitive": 5.1,
+				},
+				{
+					"hour":                1,
+					"active_energy":       145.3,
+					"active_export":       0.0,
+					"inductive_penalized": 9.8,
+					"reactive_capacitive": 4.9,
 				},
 			},
 		},
